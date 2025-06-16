@@ -43,7 +43,7 @@
 
 1. **克隆项目**
 ```bash
-git clone <repository-url>
+git clone https://github.com/GoldenTitan/personal-cloud-share.git
 cd personal-cloud-share
 ```
 
