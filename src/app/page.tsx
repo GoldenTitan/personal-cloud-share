@@ -1,159 +1,117 @@
-'use client'
+import { Metadata } from 'next'
+import { SearchBar } from '@/components/SearchBar'
+import { CategoryFilter } from '@/components/CategoryFilter'
+import { ResourceGrid } from '@/components/ResourceGrid'
+import { getCategories, getFeaturedResources, getResources } from '@/lib/database'
 
-import { useState, useEffect } from 'react'
-import { Plus, Search, Filter, Download, Mail } from 'lucide-react'
-import AdminLoginModal from '@/components/AdminLoginModal'
-import ResourceRequestModal from '@/components/ResourceRequestModal'
-import ResourceGrid from '@/components/ResourceGrid'
-import CategoryFilter from '@/components/CategoryFilter'
-import SearchBar from '@/components/SearchBar'
+export const metadata: Metadata = {
+  title: '首页',
+  description: '浏览和搜索各类网盘资源，包括电子书籍、学习资料、文档资料等。',
+}
 
-export default function HomePage() {
-  const [showAdminLogin, setShowAdminLogin] = useState(false)
-  const [showResourceRequest, setShowResourceRequest] = useState(false)
-  const [clickCount, setClickCount] = useState(0)
-  const [resources, setResources] = useState([])
-  const [categories, setCategories] = useState([])
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [searchQuery, setSearchQuery] = useState('')
+export default async function HomePage() {
+  // 获取分类、推荐资源和最新资源
+  const [categories, featuredResources, latestResourcesResult] = await Promise.all([
+    getCategories().catch(() => []),
+    getFeaturedResources().catch(() => []),
+    getResources({ page: 1, limit: 8, sort: 'created_at', order: 'desc' }).catch(() => ({ resources: [], total: 0, page: 1, limit: 8 }))
+  ])
 
-  // 处理左上角图标点击
-  const handleLogoClick = () => {
-    setClickCount(prev => {
-      const newCount = prev + 1
-      if (newCount === 5) {
-        setShowAdminLogin(true)
-        return 0 // 重置计数
-      }
-      return newCount
-    })
-
-    // 3秒后重置计数
-    setTimeout(() => {
-      setClickCount(0)
-    }, 3000)
-  }
-
-  // 获取资源数据
-  useEffect(() => {
-    fetchResources()
-    fetchCategories()
-  }, [])
-
-  const fetchResources = async () => {
-    try {
-      const response = await fetch('/api/resources')
-      const data = await response.json()
-      setResources(data.resources || [])
-    } catch (error) {
-      console.error('Failed to fetch resources:', error)
-    }
-  }
-
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch('/api/categories')
-      const data = await response.json()
-      setCategories(data.categories || [])
-    } catch (error) {
-      console.error('Failed to fetch categories:', error)
-    }
-  }
-
-  // 过滤资源
-  const filteredResources = resources.filter(resource => {
-    const matchesCategory = selectedCategory === 'all' || resource.category === selectedCategory
-    const matchesSearch = resource.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         resource.description.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
+  const latestResources = latestResourcesResult.resources
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      {/* 头部导航 */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* 头部区域 */}
+      <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            {/* 左上角图标 - 点击5次打开管理员登录 */}
-            <div
-              className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 p-2 rounded-lg transition-colors"
-              onClick={handleLogoClick}
-            >
-              <Plus className="w-6 h-6 text-blue-600" />
-              <span className="text-xl font-bold text-gray-800">资源分享</span>
+            {/* Logo 和标题 */}
+            <div className="flex items-center space-x-3">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">云</span>
+              </div>
+              <h1 className="text-xl font-bold text-gray-900">
+                个人网盘资源分享
+              </h1>
             </div>
 
-            {/* 右侧按钮 */}
-            <button
-              onClick={() => setShowResourceRequest(true)}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              <Mail className="w-4 h-4" />
-              <span>请求资源</span>
-            </button>
+            {/* 管理员入口（隐藏） */}
+            <div className="hidden">
+              <button className="text-sm text-gray-500 hover:text-gray-700">
+                管理
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* 主要内容 */}
+      {/* 主要内容区域 */}
       <main className="container mx-auto px-4 py-8">
-        {/* 搜索和筛选区域 */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="搜索资源..."
-            />
-            <CategoryFilter
-              categories={categories}
-              selectedCategory={selectedCategory}
-              onCategoryChange={setSelectedCategory}
-            />
-          </div>
+        {/* 欢迎区域 */}
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            欢迎来到资源分享站
+          </h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            这里汇集了各类优质资源，包括电子书籍、学习资料、文档资料等。
+            使用搜索功能快速找到您需要的资源，或者浏览不同分类发现更多内容。
+          </p>
         </div>
 
-        {/* 资源网格 */}
-        <ResourceGrid resources={filteredResources} />
+        {/* 搜索区域 */}
+        <div className="max-w-2xl mx-auto mb-12">
+          <SearchBar placeholder="搜索资源..." />
+        </div>
 
-        {/* 空状态 */}
-        {filteredResources.length === 0 && (
-          <div className="text-center py-16">
-            <div className="text-gray-400 mb-4">
-              <Search className="w-16 h-16 mx-auto" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">
-              暂无资源
-            </h3>
-            <p className="text-gray-500 mb-6">
-              {searchQuery || selectedCategory !== 'all'
-                ? '没有找到匹配的资源，试试其他关键词或分类'
-                : '管理员还没有上传任何资源'}
-            </p>
-            <button
-              onClick={() => setShowResourceRequest(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
-            >
-              请求资源
-            </button>
+        {/* 分类筛选 */}
+        <CategoryFilter
+          categories={categories}
+          className="mb-12"
+        />
+
+        {/* 推荐资源 */}
+        {featuredResources.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+              推荐资源
+            </h2>
+            <ResourceGrid resources={featuredResources} />
           </div>
         )}
+
+        {/* 最新资源 */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+            最新资源
+          </h2>
+          <ResourceGrid resources={latestResources} loading={false} />
+        </div>
+
+        {/* 资源请求区域 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">
+            没有找到您需要的资源？
+          </h3>
+          <p className="text-gray-600 mb-6">
+            告诉我们您需要什么资源，我们会尽力为您找到并分享。
+          </p>
+          <button className="bg-green-500 text-white px-8 py-3 rounded-lg hover:bg-green-600 transition-colors font-medium">
+            提交资源请求
+          </button>
+        </div>
       </main>
 
-      {/* 模态框 */}
-      <AdminLoginModal
-        isOpen={showAdminLogin}
-        onClose={() => setShowAdminLogin(false)}
-      />
-
-      <ResourceRequestModal
-        isOpen={showResourceRequest}
-        onClose={() => setShowResourceRequest(false)}
-        onSuccess={() => {
-          setShowResourceRequest(false)
-          // 可以添加成功提示
-        }}
-      />
+      {/* 底部 */}
+      <footer className="bg-gray-50 border-t mt-16">
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center text-gray-600">
+            <p>&copy; 2024 个人网盘资源分享. 保留所有权利.</p>
+            <p className="mt-2 text-sm">
+              本站仅用于学习交流，请支持正版资源。
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

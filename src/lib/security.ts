@@ -1,308 +1,295 @@
-import { NextRequest } from 'next/server'
-import crypto from 'crypto'
+/**
+ * 安全相关函数库
+ * 包含输入验证、清理和安全检查功能
+ */
 
-// ===== CSRF 保护 =====
+// =============================================
+// 输入清理和验证
+// =============================================
 
 /**
- * 生成CSRF Token
- * @returns CSRF Token
+ * 清理用户输入，防止XSS攻击
  */
-export function generateCSRFToken(): string {
-  return crypto.randomBytes(32).toString('hex')
+export function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') {
+    return ''
+  }
+
+  return input
+    .trim()
+    .replace(/[<>]/g, '') // 移除尖括号
+    .replace(/javascript:/gi, '') // 移除javascript协议
+    .replace(/on\w+=/gi, '') // 移除事件处理器
+    .replace(/script/gi, '') // 移除script标签
 }
 
 /**
- * 验证CSRF Token
- * @param token 客户端提供的token
- * @param sessionToken 服务端存储的token
- * @returns 是否有效
+ * 验证邮箱格式
  */
-export function validateCSRFToken(token: string, sessionToken: string): boolean {
-  if (!token || !sessionToken) return false
-  return crypto.timingSafeEqual(
-    Buffer.from(token, 'hex'),
-    Buffer.from(sessionToken, 'hex')
-  )
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email) && email.length <= 255
 }
 
-// ===== 速率限制 =====
+/**
+ * 验证URL格式
+ */
+export function validateUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url)
+    return ['http:', 'https:'].includes(urlObj.protocol)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 验证UUID格式
+ */
+export function validateUUID(uuid: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
+/**
+ * 验证文件大小字符串格式
+ */
+export function validateFileSize(size: string): boolean {
+  const sizeRegex = /^\d+(\.\d+)?\s*(B|KB|MB|GB|TB)$/i
+  return sizeRegex.test(size) && size.length <= 20
+}
+
+/**
+ * 验证文件类型
+ */
+export function validateFileType(type: string): boolean {
+  const allowedTypes = [
+    'PDF', 'DOC', 'DOCX', 'XLS', 'XLSX', 'PPT', 'PPTX',
+    'TXT', 'RTF', 'ZIP', 'RAR', '7Z',
+    'MP4', 'AVI', 'MKV', 'MOV', 'WMV',
+    'MP3', 'WAV', 'FLAC', 'AAC',
+    'JPG', 'JPEG', 'PNG', 'GIF', 'BMP', 'SVG',
+    'EXE', 'MSI', 'DMG', 'APK'
+  ]
+  return allowedTypes.includes(type.toUpperCase()) && type.length <= 10
+}
+
+// =============================================
+// 内容过滤
+// =============================================
+
+/**
+ * 检查内容是否包含敏感词
+ */
+export function containsSensitiveContent(content: string): boolean {
+  const sensitiveWords = [
+    // 这里可以添加敏感词列表
+    'virus', 'malware', 'hack', 'crack',
+    '病毒', '木马', '破解', '盗版'
+  ]
+  
+  const lowerContent = content.toLowerCase()
+  return sensitiveWords.some(word => lowerContent.includes(word.toLowerCase()))
+}
+
+/**
+ * 过滤HTML标签
+ */
+export function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>/g, '')
+}
+
+/**
+ * 转义HTML特殊字符
+ */
+export function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }
+  
+  return text.replace(/[&<>"']/g, (char) => map[char])
+}
+
+// =============================================
+// 速率限制
+// =============================================
 
 interface RateLimitEntry {
   count: number
   resetTime: number
 }
 
-// 内存存储（生产环境建议使用Redis）
 const rateLimitStore = new Map<string, RateLimitEntry>()
 
 /**
  * 检查速率限制
- * @param identifier 标识符（通常是IP地址）
- * @param limit 限制次数
- * @param windowMs 时间窗口（毫秒）
- * @returns 是否允许请求
  */
 export function checkRateLimit(
-  identifier: string,
-  limit: number = 100,
-  windowMs: number = 15 * 60 * 1000 // 15分钟
-): { allowed: boolean; remaining: number; resetTime: number } {
+  identifier: string, 
+  maxRequests: number = 10, 
+  windowMs: number = 60000
+): boolean {
   const now = Date.now()
   const entry = rateLimitStore.get(identifier)
-
-  // 如果没有记录或已过期，创建新记录
+  
   if (!entry || now > entry.resetTime) {
-    const newEntry: RateLimitEntry = {
+    // 新的时间窗口
+    rateLimitStore.set(identifier, {
       count: 1,
       resetTime: now + windowMs
-    }
-    rateLimitStore.set(identifier, newEntry)
-    return {
-      allowed: true,
-      remaining: limit - 1,
-      resetTime: newEntry.resetTime
-    }
+    })
+    return true
   }
-
-  // 检查是否超过限制
-  if (entry.count >= limit) {
-    return {
-      allowed: false,
-      remaining: 0,
-      resetTime: entry.resetTime
-    }
+  
+  if (entry.count >= maxRequests) {
+    return false // 超过限制
   }
-
-  // 增加计数
+  
   entry.count++
-  rateLimitStore.set(identifier, entry)
-
-  return {
-    allowed: true,
-    remaining: limit - entry.count,
-    resetTime: entry.resetTime
-  }
+  return true
 }
 
 /**
- * 从请求中获取客户端IP
- * @param request NextRequest对象
- * @returns 客户端IP地址
+ * 清理过期的速率限制记录
  */
-export function getClientIP(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for')
-  const realIP = request.headers.get('x-real-ip')
-  const remoteAddr = request.headers.get('remote-addr')
-  
-  if (forwarded) {
-    return forwarded.split(',')[0].trim()
-  }
-  
-  return realIP || remoteAddr || 'unknown'
-}
-
-// ===== 输入白名单验证 =====
-
-/**
- * 验证字符串是否只包含允许的字符
- * @param input 输入字符串
- * @param allowedPattern 允许的字符模式
- * @returns 是否通过验证
- */
-export function validateWhitelist(input: string, allowedPattern: RegExp): boolean {
-  if (!input || typeof input !== 'string') return false
-  return allowedPattern.test(input)
-}
-
-/**
- * 预定义的白名单模式
- */
-export const WhitelistPatterns = {
-  // 用户名：中文、英文、数字、下划线、连字符
-  USERNAME: /^[\u4e00-\u9fa5a-zA-Z0-9_-]+$/,
-  
-  // 邮箱：标准邮箱格式
-  EMAIL: /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
-  
-  // 分类标识符：小写字母、数字、连字符
-  SLUG: /^[a-z0-9-]+$/,
-  
-  // 标签：中文、英文、数字、空格
-  TAG: /^[\u4e00-\u9fa5a-zA-Z0-9\s]+$/,
-  
-  // 安全文本：中文、英文、数字、常用标点符号
-  SAFE_TEXT: /^[\u4e00-\u9fa5a-zA-Z0-9\s.,!?;:()\-_"']+$/,
-  
-  // URL路径：字母、数字、连字符、下划线、斜杠、点
-  URL_PATH: /^[a-zA-Z0-9\-_.\/]+$/
-}
-
-// ===== 危险操作检测 =====
-
-/**
- * 检测是否为危险操作
- * @param input 输入内容
- * @returns 检测结果
- */
-export function detectDangerousOperation(input: string): {
-  isDangerous: boolean
-  reasons: string[]
-} {
-  const reasons: string[] = []
-  
-  if (!input || typeof input !== 'string') {
-    return { isDangerous: false, reasons }
-  }
-  
-  const dangerousPatterns = [
-    // SQL注入模式
-    { pattern: /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)/gi, reason: '包含SQL关键字' },
-    
-    // 脚本注入模式
-    { pattern: /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, reason: '包含脚本标签' },
-    { pattern: /javascript:/gi, reason: '包含JavaScript协议' },
-    { pattern: /vbscript:/gi, reason: '包含VBScript协议' },
-    { pattern: /on\w+\s*=/gi, reason: '包含事件处理器' },
-    
-    // 文件操作模式
-    { pattern: /\.\.\//g, reason: '包含路径遍历' },
-    { pattern: /\/etc\/passwd/gi, reason: '尝试访问系统文件' },
-    
-    // 命令注入模式
-    { pattern: /[;&|`$(){}[\]]/g, reason: '包含命令注入字符' },
-    
-    // 其他危险模式
-    { pattern: /<iframe\b/gi, reason: '包含iframe标签' },
-    { pattern: /<object\b/gi, reason: '包含object标签' },
-    { pattern: /<embed\b/gi, reason: '包含embed标签' },
-    { pattern: /data:text\/html/gi, reason: '包含HTML数据URI' }
-  ]
-  
-  dangerousPatterns.forEach(({ pattern, reason }) => {
-    if (pattern.test(input)) {
-      reasons.push(reason)
-    }
-  })
-  
-  return {
-    isDangerous: reasons.length > 0,
-    reasons
-  }
-}
-
-// ===== 安全日志记录 =====
-
-export interface SecurityLogEntry {
-  timestamp: string
-  ip: string
-  userAgent?: string
-  action: string
-  resource?: string
-  status: 'success' | 'blocked' | 'warning'
-  reason?: string
-  details?: any
-}
-
-/**
- * 记录安全事件
- * @param entry 日志条目
- */
-export function logSecurityEvent(entry: SecurityLogEntry): void {
-  // 在生产环境中，这里应该写入到日志文件或数据库
-  console.log('[SECURITY]', JSON.stringify(entry, null, 2))
-}
-
-/**
- * 创建安全日志条目
- * @param request NextRequest对象
- * @param action 操作类型
- * @param status 状态
- * @param options 其他选项
- * @returns 日志条目
- */
-export function createSecurityLogEntry(
-  request: NextRequest,
-  action: string,
-  status: 'success' | 'blocked' | 'warning',
-  options: {
-    resource?: string
-    reason?: string
-    details?: any
-  } = {}
-): SecurityLogEntry {
-  return {
-    timestamp: new Date().toISOString(),
-    ip: getClientIP(request),
-    userAgent: request.headers.get('user-agent') || undefined,
-    action,
-    status,
-    ...options
-  }
-}
-
-// ===== 综合安全检查 =====
-
-/**
- * 综合安全检查函数
- * @param input 输入数据
- * @param options 检查选项
- * @returns 检查结果
- */
-export function performSecurityCheck(
-  input: any,
-  options: {
-    checkDangerous?: boolean
-    checkWhitelist?: RegExp
-    maxLength?: number
-    required?: boolean
-  } = {}
-): {
-  passed: boolean
-  errors: string[]
-  warnings: string[]
-} {
-  const errors: string[] = []
-  const warnings: string[] = []
-  
-  const {
-    checkDangerous = true,
-    checkWhitelist,
-    maxLength = 1000,
-    required = false
-  } = options
-  
-  // 检查是否为空
-  if (!input || (typeof input === 'string' && input.trim() === '')) {
-    if (required) {
-      errors.push('输入不能为空')
-    }
-    return { passed: errors.length === 0, errors, warnings }
-  }
-  
-  // 转换为字符串进行检查
-  const inputStr = typeof input === 'string' ? input : String(input)
-  
-  // 长度检查
-  if (inputStr.length > maxLength) {
-    errors.push(`输入长度不能超过${maxLength}个字符`)
-  }
-  
-  // 危险操作检测
-  if (checkDangerous) {
-    const dangerCheck = detectDangerousOperation(inputStr)
-    if (dangerCheck.isDangerous) {
-      errors.push(`输入包含危险内容: ${dangerCheck.reasons.join(', ')}`)
+export function cleanupRateLimit(): void {
+  const now = Date.now()
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetTime) {
+      rateLimitStore.delete(key)
     }
   }
+}
+
+// =============================================
+// 管理员验证
+// =============================================
+
+/**
+ * 验证管理员凭据
+ */
+export function validateAdminCredentials(email: string, password: string): boolean {
+  const adminEmail = process.env.ADMIN_EMAIL
+  const adminPassword = process.env.ADMIN_PASSWORD
   
-  // 白名单检查
-  if (checkWhitelist && !validateWhitelist(inputStr, checkWhitelist)) {
-    errors.push('输入包含不允许的字符')
+  if (!adminEmail || !adminPassword) {
+    console.error('Admin credentials not configured')
+    return false
   }
   
-  return {
-    passed: errors.length === 0,
-    errors,
-    warnings
+  return email === adminEmail && password === adminPassword
+}
+
+/**
+ * 生成安全的会话令牌
+ */
+export function generateSessionToken(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < 32; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
+  return result
+}
+
+// =============================================
+// 数据验证规则
+// =============================================
+
+export const ValidationRules = {
+  // 资源相关
+  resourceTitle: {
+    minLength: 1,
+    maxLength: 200,
+    required: true
+  },
+  resourceDescription: {
+    minLength: 0,
+    maxLength: 1000,
+    required: false
+  },
+  resourceLink: {
+    minLength: 10,
+    maxLength: 500,
+    required: true,
+    pattern: /^https?:\/\/.+/
+  },
+  extractionCode: {
+    minLength: 0,
+    maxLength: 50,
+    required: false,
+    pattern: /^[a-zA-Z0-9]*$/
+  },
+  
+  // 分类相关
+  categoryName: {
+    minLength: 1,
+    maxLength: 100,
+    required: true
+  },
+  categorySlug: {
+    minLength: 1,
+    maxLength: 100,
+    required: true,
+    pattern: /^[a-z0-9-]+$/
+  },
+  
+  // 请求相关
+  requestResourceName: {
+    minLength: 1,
+    maxLength: 200,
+    required: true
+  },
+  requestDescription: {
+    minLength: 0,
+    maxLength: 1000,
+    required: false
+  },
+  requesterEmail: {
+    minLength: 5,
+    maxLength: 255,
+    required: true,
+    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  },
+  contactInfo: {
+    minLength: 0,
+    maxLength: 500,
+    required: false
+  }
+}
+
+/**
+ * 验证字段值
+ */
+export function validateField(
+  value: string, 
+  rules: typeof ValidationRules.resourceTitle
+): { valid: boolean; error?: string } {
+  if (rules.required && (!value || value.trim().length === 0)) {
+    return { valid: false, error: '此字段为必填项' }
+  }
+  
+  if (value && value.length < rules.minLength) {
+    return { valid: false, error: `最少需要 ${rules.minLength} 个字符` }
+  }
+  
+  if (value && value.length > rules.maxLength) {
+    return { valid: false, error: `最多允许 ${rules.maxLength} 个字符` }
+  }
+  
+  if (rules.pattern && value && !rules.pattern.test(value)) {
+    return { valid: false, error: '格式不正确' }
+  }
+  
+  return { valid: true }
+}
+
+// 定期清理速率限制记录
+if (typeof window === 'undefined') {
+  // 仅在服务器端运行
+  setInterval(cleanupRateLimit, 300000) // 每5分钟清理一次
 }

@@ -1,150 +1,76 @@
 'use client'
 
-import { useState } from 'react'
-import { Download, Copy, ExternalLink, Calendar, Tag, Check } from 'lucide-react'
-
-interface Resource {
-  id: string
-  title: string
-  description: string
-  link: string
-  category: string
-  tags: string[]
-  created_at: string
-}
+import { Resource } from '@/lib/supabase'
+import { ResourceCard } from './ResourceCard'
 
 interface ResourceGridProps {
   resources: Resource[]
+  loading?: boolean
+  className?: string
 }
 
-export default function ResourceGrid({ resources }: ResourceGridProps) {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  const handleCopyLink = async (link: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(link)
-      setCopiedId(id)
-      setTimeout(() => setCopiedId(null), 2000)
-    } catch (error) {
-      console.error('Failed to copy link:', error)
-    }
+export function ResourceGrid({ resources, loading = false, className = "" }: ResourceGridProps) {
+  if (loading) {
+    return (
+      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 ${className}`}>
+        {/* 加载骨架屏 */}
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="animate-pulse">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-start justify-between mb-3">
+                <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-5 bg-gray-200 rounded-full w-16"></div>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                <div className="h-4 bg-gray-200 rounded w-full"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+              </div>
+              
+              <div className="flex items-center justify-between text-sm mb-4">
+                <div className="h-4 bg-gray-200 rounded w-16"></div>
+                <div className="h-4 bg-gray-200 rounded w-20"></div>
+              </div>
+              
+              <div className="h-9 bg-gray-200 rounded w-full"></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  }
-
-  const getCategoryIcon = (category: string) => {
-    switch (category.toLowerCase()) {
-      case 'ebooks':
-      case '电子书籍':
-        return '📚'
-      case 'study':
-      case '学习资料':
-        return '📖'
-      case 'documents':
-      case '文档资料':
-        return '📄'
-      case 'music':
-      case '音乐资源':
-        return '🎵'
-      case 'video':
-      case '视频资源':
-        return '🎬'
-      default:
-        return '📁'
-    }
+  if (resources.length === 0) {
+    return (
+      <div className={`text-center py-12 ${className}`}>
+        <div className="max-w-md mx-auto">
+          <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">暂无资源</h3>
+          <p className="text-gray-500 mb-6">
+            当前没有找到匹配的资源，请尝试调整搜索条件或浏览其他分类。
+          </p>
+          <div className="space-y-2 text-sm text-gray-400">
+            <p>• 检查搜索关键词是否正确</p>
+            <p>• 尝试使用不同的关键词</p>
+            <p>• 浏览其他资源分类</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 ${className}`}>
       {resources.map((resource) => (
-        <div
+        <ResourceCard
           key={resource.id}
-          className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200 overflow-hidden"
-        >
-          {/* 卡片头部 */}
-          <div className="p-6">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl">{getCategoryIcon(resource.category)}</span>
-                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                  {resource.category}
-                </span>
-              </div>
-              <div className="flex items-center text-xs text-gray-400">
-                <Calendar className="w-3 h-3 mr-1" />
-                {formatDate(resource.created_at)}
-              </div>
-            </div>
-
-            {/* 标题和描述 */}
-            <h3 className="text-lg font-semibold text-gray-800 mb-2 line-clamp-2">
-              {resource.title}
-            </h3>
-            <p className="text-gray-600 text-sm mb-4 line-clamp-3">
-              {resource.description}
-            </p>
-
-            {/* 标签 */}
-            {resource.tags && resource.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-4">
-                {resource.tags.slice(0, 3).map((tag, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full"
-                  >
-                    <Tag className="w-2 h-2 mr-1" />
-                    {tag}
-                  </span>
-                ))}
-                {resource.tags.length > 3 && (
-                  <span className="text-xs text-gray-500">
-                    +{resource.tags.length - 3}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 卡片底部操作 */}
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => handleCopyLink(resource.link, resource.id)}
-                className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700 transition-colors"
-              >
-                {copiedId === resource.id ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>已复制</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    <span>复制链接</span>
-                  </>
-                )}
-              </button>
-
-              <a
-                href={resource.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>下载</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-          </div>
-        </div>
+          resource={resource}
+          className="h-full"
+        />
       ))}
     </div>
   )
